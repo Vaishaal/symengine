@@ -597,6 +597,8 @@ set_basic get_set_from_vec(const vec_sym &syms)
 std::pair<DenseMatrix, DenseMatrix>
 linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
 {
+
+    std::cout << "converting equations to matrix..." << std::endl;
     auto size = numeric_cast<unsigned int>(syms.size());
     DenseMatrix A(1, size);
     vec_basic coeffs, bvec;
@@ -607,6 +609,7 @@ linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
     for (unsigned int i = 0; i < size; i++) {
         index_of_sym[syms[i]] = i;
     }
+    auto zero = integer(0);
     for (const auto &eqn : equations) {
         coeffs.clear();
         coeffs.resize(size);
@@ -618,6 +621,11 @@ linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
 
         auto mpoly = from_basic<MExprPoly>(neqn, gens);
         RCP<const Basic> rem = zero;
+        std::unordered_set<int> coeff_idxs;
+        for (int i = 0; i < size; i++) {
+            coeff_idxs.insert(i);
+        }
+
         for (const auto &p : mpoly->get_poly().dict_) {
             RCP<const Basic> res = (p.second.get_basic());
             int whichvar = 0, non_zero = 0;
@@ -635,10 +643,17 @@ linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
             if (not non_zero) {
                 rem = res;
             } else {
-                coeffs[index_of_sym[cursim]] = res;
+                int coeff_idx = index_of_sym[cursim];
+                coeffs[coeff_idx] = res;
+                coeff_idxs.erase(coeff_idx);
             }
         }
+
         bvec.push_back(neg(rem));
+        /* handle coeff idxs that are unhandled */
+        for (auto coeff_idx : coeff_idxs) {
+            coeffs[coeff_idx] = zero;
+        }
         A.row_insert(DenseMatrix(1, size, coeffs), ++row);
     }
     A.row_del(0);
