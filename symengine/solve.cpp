@@ -3,6 +3,7 @@
 #include <symengine/logic.h>
 #include <symengine/mul.h>
 #include <symengine/as_real_imag.cpp>
+#include <symengine/matrix.h>
 
 namespace SymEngine
 {
@@ -557,15 +558,47 @@ RCP<const Set> solve(const RCP<const Basic> &f, const RCP<const Symbol> &sym,
     return solve_rational(f, sym, domain);
 }
 
-vec_basic linsolve_helper(const DenseMatrix &A, const DenseMatrix &b)
+vec_basic linsolve_helper(const DenseMatrix &A, const DenseMatrix &b, const vec_sym &syms)
 {
-    DenseMatrix res(A.nrows(), 1);
-    fraction_free_gauss_jordan_solve(A, b, res);
-    vec_basic fs;
-    for (unsigned i = 0; i < res.nrows(); i++) {
-        fs.push_back(res.get(i, 0));
+    DenseMatrix A_aug(A);
+    A_aug.col_insert(b, A.ncols());
+
+    DenseMatrix A_aug_rref(A_aug.nrows(), A_aug.ncols());
+    DenseMatrix res(A_aug.nrows(), 1);
+    permutelist pl;
+    pivoted_fraction_free_gauss_jordan_elimination(A_aug, A_aug_rref, pl);
+    //std::cout << "A=\n" << A.__str__() << std::endl;
+    //std::cout << "b=\n" << b.__str__() << std::endl;
+    //std::cout << "A_aug=\n" << A_aug.__str__() << std::endl;
+    for (auto &row_pair : pl) {
+        row_exchange_dense(A_aug_rref, row_pair.first, row_pair.second);
     }
-    return fs;
+    //std::cout << "A_rref=\n" << A_aug_rref.__str__() << std::endl;
+    vec_basic solns;
+    for (int i = 0; i < std::min(A_aug_rref.nrows(), A_aug_rref.ncols() - 1); i ++ ) {
+        auto rem = A_aug_rref.get(i, A_aug_rref.ncols() - 1);
+        auto scale = A_aug_rref.get(i, i);
+        for (int j = i + 1; j < A.ncols(); j++) {
+            auto val = mul(A_aug_rref.get(i, j), syms[j]);
+            rem = add(rem, mul(SymEngine::minus_one, val));
+        }
+        auto sym = syms[i];
+        rem = mul(rem, pow(scale, SymEngine::minus_one));
+        solns.push_back(rem);
+    }
+
+    for (int i = solns.size(); i < syms.size(); i++) {
+        solns.push_back(syms[i]);
+    }
+    /*
+    for (int i = 0; i < solns.size(); i ++) {
+        auto sym = syms[i];
+        auto sol = solns[i];
+        std::cout << "symbol: " << *sym  << " = ";
+        std::cout << *sol << std::endl;
+    }
+    */
+    return solns;
 }
 
 vec_basic linsolve(const DenseMatrix &system, const vec_sym &syms)
@@ -574,7 +607,7 @@ vec_basic linsolve(const DenseMatrix &system, const vec_sym &syms)
     system.submatrix(A, 0, 0, system.nrows() - 1, system.ncols() - 2);
     system.submatrix(b, 0, system.ncols() - 1, system.nrows() - 1,
                      system.ncols() - 1);
-    return linsolve_helper(A, b);
+    return linsolve_helper(A, b, syms);
 }
 
 vec_basic linsolve(const vec_basic &system, const vec_sym &syms)
@@ -583,7 +616,7 @@ vec_basic linsolve(const vec_basic &system, const vec_sym &syms)
     auto mat = linear_eqns_to_matrix(system, syms);
     A = mat.first;
     b = mat.second;
-    return linsolve_helper(A, b);
+    return linsolve_helper(A, b, syms);
 }
 
 set_basic get_set_from_vec(const vec_sym &syms)
@@ -598,7 +631,6 @@ std::pair<DenseMatrix, DenseMatrix>
 linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
 {
 
-    std::cout << "converting equations to matrix..." << std::endl;
     auto size = numeric_cast<unsigned int>(syms.size());
     DenseMatrix A(1, size);
     vec_basic coeffs, bvec;
