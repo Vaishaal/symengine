@@ -562,7 +562,7 @@ vec_basic linsolve_helper(const DenseMatrix &A, const DenseMatrix &b, const vec_
 {
     DenseMatrix A_aug(A);
     A_aug.col_insert(b, A.ncols());
-
+    auto zero = integer(0);
     DenseMatrix A_aug_rref(A_aug.nrows(), A_aug.ncols());
     DenseMatrix res(A_aug.nrows(), 1);
     permutelist pl;
@@ -570,6 +570,7 @@ vec_basic linsolve_helper(const DenseMatrix &A, const DenseMatrix &b, const vec_
     //std::cout << "A=\n" << A.__str__() << std::endl;
     //std::cout << "b=\n" << b.__str__() << std::endl;
     //std::cout << "A_aug=\n" << A_aug.__str__() << std::endl;
+    //std::cout << "rank=" << pl.size() << std::endl;
     for (auto &row_pair : pl) {
         row_exchange_dense(A_aug_rref, row_pair.first, row_pair.second);
     }
@@ -578,6 +579,11 @@ vec_basic linsolve_helper(const DenseMatrix &A, const DenseMatrix &b, const vec_
     for (int i = 0; i < std::min(A_aug_rref.nrows(), A_aug_rref.ncols() - 1); i ++ ) {
         auto rem = A_aug_rref.get(i, A_aug_rref.ncols() - 1);
         auto scale = A_aug_rref.get(i, i);
+        auto cmp = scale->compare(*zero);
+        if (cmp == 0) {
+            solns.push_back(syms[i]);
+            continue;
+        }
         for (int j = i + 1; j < A.ncols(); j++) {
             auto val = mul(A_aug_rref.get(i, j), syms[j]);
             rem = add(rem, mul(SymEngine::minus_one, val));
@@ -586,18 +592,33 @@ vec_basic linsolve_helper(const DenseMatrix &A, const DenseMatrix &b, const vec_
         rem = mul(rem, pow(scale, SymEngine::minus_one));
         solns.push_back(rem);
     }
+    //std::cout << "A_aug (after) =\n" << A_aug.__str__() << std::endl;
 
     for (int i = solns.size(); i < syms.size(); i++) {
         solns.push_back(syms[i]);
     }
-    /*
-    for (int i = 0; i < solns.size(); i ++) {
+
+    for (int i = 1; i < solns.size(); i ++) {
         auto sym = syms[i];
         auto sol = solns[i];
-        std::cout << "symbol: " << *sym  << " = ";
-        std::cout << *sol << std::endl;
+        //std::cout << "symbol: " << *sym  << " = ";
+        //std::cout << *sol << std::endl;
     }
-    */
+    bool valid_sol = true;
+    for (int i = 0; i < A_aug.nrows(); i ++) {
+        auto rem = A_aug.get(i, A_aug.ncols() - 1);
+        //std::cout << "Remainder row " << i << " = " << *rem << std::endl;
+        for (int j = 0; j < A_aug.ncols() - 1; j ++) {
+            auto term = mul(A_aug.get(i,j), solns[j]);
+            rem = add(rem, mul(SymEngine::minus_one, term));
+        }
+        //std::cout << "Remainder (at end) row " << i << " = " << *rem << std::endl;
+        if (rem->__str__() != zero->__str__()) {
+            //std::cout << "bad solution" << std::endl;
+            valid_sol = false;
+            return vec_basic();
+        }
+    }
     return solns;
 }
 
@@ -631,10 +652,10 @@ std::pair<DenseMatrix, DenseMatrix>
 linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
 {
 
+    std::cout << "VAISHAAL IMPL" << std::endl;
     auto size = numeric_cast<unsigned int>(syms.size());
     DenseMatrix A(1, size);
     vec_basic coeffs, bvec;
-
     int row = 0;
     auto gens = get_set_from_vec(syms);
     umap_basic_uint index_of_sym;
@@ -659,8 +680,7 @@ linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
         }
 
         for (const auto &p : mpoly->get_poly().dict_) {
-            RCP<const Basic> res = (p.second.get_basic());
-            int whichvar = 0, non_zero = 0;
+            RCP<const Basic> res = (p.second.get_basic()); int whichvar = 0, non_zero = 0;
             RCP<const Basic> cursim;
             for (auto &sym : gens) {
                 if (0 != p.first[whichvar]) {
@@ -689,6 +709,7 @@ linear_eqns_to_matrix(const vec_basic &equations, const vec_sym &syms)
         A.row_insert(DenseMatrix(1, size, coeffs), ++row);
     }
     A.row_del(0);
+    //std::cout << A.__str__() << std::endl;
     return std::make_pair(
         A, DenseMatrix(numeric_cast<unsigned int>(equations.size()), 1, bvec));
 }
