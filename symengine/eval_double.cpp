@@ -1,6 +1,7 @@
 #include <symengine/visitor.h>
 #include <symengine/eval_double.h>
 #include <symengine/symengine_exception.h>
+#include <cmath>
 
 namespace SymEngine
 {
@@ -201,6 +202,7 @@ public:
         result_ = std::asinh(tmp);
     };
 
+
     void bvisit(const ACsch &x)
     {
         T tmp = apply(*(x.get_arg()));
@@ -296,6 +298,18 @@ public:
     {
         double tmp = apply(*(x.get_args()[0]));
         result_ = std::tgamma(tmp);
+    };
+
+    void bvisit(const Ceiling &x)
+    {
+        double tmp = apply(*(x.get_arg()));
+        result_ = std::ceil(tmp);
+    };
+
+    void bvisit(const Floor&x)
+    {
+        double tmp = apply(*(x.get_arg()));
+        result_ = std::floor(tmp);
     };
 
     void bvisit(const LogGamma &x)
